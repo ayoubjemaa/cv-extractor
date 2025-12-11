@@ -25,9 +25,9 @@ async def upload_cv(file: UploadFile = File(...)) -> CVResult:
 
     # Extraire le texte brut
     text = ALLOWED_CONTENT_TYPES[file.content_type](tmp_path)
-
     # Nettoyer le texte
     cleaned_text = clean_text(text)
+    print(text)
 
     # Extraire informations
     first_name, last_name = extract_name(cleaned_text)
