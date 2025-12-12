@@ -1,9 +1,13 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from tempfile import NamedTemporaryFile
-from .models.cv_result import CVResult
-from .services.pdf_parser import extract_text_pdf
-from .services.docx_parser import extract_text_docx
-from .services.extractor import clean_text, extract_email, extract_phone, extract_name, extract_degree
+from models.cv_result import CVResult
+from services.pdf_parser import extract_text_pdf
+from services.docx_parser import extract_text_docx
+from services.extractor import clean_text, extract_email, extract_phone, extract_name, extract_degree
 
 app = FastAPI(title="CV Extractor API – Partie B")
 

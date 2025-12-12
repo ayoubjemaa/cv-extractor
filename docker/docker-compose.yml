@@ -1,0 +1,18 @@
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: cv-extractor-backend
+    ports:
+      - "8000:8000"
+  frontend:
+      build:
+        context: ../frontend
+        dockerfile: ../docker/Dockerfile.frontend
+      container_name: cv-extractor-frontend
+      ports:
+        - "8501:8501"
+      hostname: cv-extractor-frontend
+      depends_on:
+        - backend

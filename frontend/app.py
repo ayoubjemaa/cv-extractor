@@ -4,6 +4,7 @@ import json
 import base64
 import os
 import time
+import socket
 
 # Configuration de la page
 st.set_page_config(
@@ -13,7 +14,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-API_URL = "http://localhost:8000/api/v1/upload-cv"
+# Détermine l'URL du backend selon que l'application tourne dans Docker ou en local
+hostname = socket.gethostname()
+
+if hostname == "cv-extractor-frontend":
+    API_URL = "http://cv-extractor-backend:8000/api/v1/upload-cv"
+else:
+    API_URL = "http://localhost:8000/api/v1/upload-cv"
+
+print(f"Backend API URL utilisée : {API_URL}")
 
 def load_image_as_base64(filename: str):
     try:
