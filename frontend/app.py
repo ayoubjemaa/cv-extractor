@@ -5,8 +5,9 @@ import base64
 import os
 import time
 import socket
+import logging
 
-# Configuration de la page
+#CONFIGURATION INITIALE
 st.set_page_config(
     page_title="CBX Extractor",
     page_icon=None,
@@ -14,25 +15,42 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Détermine l'URL du backend selon que l'application tourne dans Docker ou en local
-hostname = socket.gethostname()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("frontend")
 
-if hostname == "cv-extractor-frontend":
-    API_URL = "http://cv-extractor-backend:8000/api/v1/upload-cv"
-else:
-    API_URL = "http://localhost:8000/api/v1/upload-cv"
 
-print(f"Backend API URL utilisée : {API_URL}")
+# CONSTANTES & CONFIGURATION API 
 
-def load_image_as_base64(filename: str):
+def get_api_url():
+    """Détermine l'URL du backend de manière robuste."""
+    env_url = os.getenv("BACKEND_API_URL")
+    if env_url:
+        return env_url
+    
+    try:
+        hostname = socket.gethostname()
+        if hostname == "cv-extractor-frontend":
+            return "http://cv-extractor-backend:8000/api/v1/upload-cv"
+    except Exception:
+        pass
+        
+    return "http://localhost:8000/api/v1/upload-cv"
+
+API_URL = get_api_url()
+logger.info(f"Frontend connecté au Backend sur : {API_URL}")
+
+
+# GESTION DES ASSETS & STYLES 
+
+def load_image_as_base64(filename: str) -> str | None:
     try:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(current_dir, filename)
         if os.path.exists(path):
             with open(path, "rb") as f:
                 return base64.b64encode(f.read()).decode("utf-8")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Erreur chargement image {filename}: {e}")
     return None
 
 def inject_custom_css():
@@ -52,12 +70,11 @@ def inject_custom_css():
       background-color: var(--bg-color);
       font-family: 'Plus Jakarta Sans', sans-serif;
       color: var(--text-main);
-      font-size: 16px;
     }
     
     header[data-testid="stHeader"], footer { display: none !important; }
 
-    /* Navbar */
+    /* Navbar Fixe */
     .custom-navbar {
       position: fixed; top: 0; left: 0; right: 0; height: 72px;
       background: rgba(255, 255, 255, 0.95);
@@ -65,74 +82,40 @@ def inject_custom_css():
       border-bottom: 1px solid var(--border-color);
       display: flex; align-items: center; justify-content: space-between;
       padding: 0 32px; z-index: 10000;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
-    /* Layout */
+    /* Padding du contenu principal pour éviter d'être caché par la navbar */
     [data-testid="stAppViewContainer"] > .main > .block-container {
-      padding-top: 120px !important;
+      padding-top: 100px !important;
       padding-bottom: 60px !important;
       max-width: 1400px;
     }
 
-    /* Upload Zone */
+    /* Zone de dépôt de fichiers */
     [data-testid="stFileUploaderDropzone"] {
         background-color: white;
         border: 1px dashed #cbd5e1;
         border-radius: 12px;
         padding: 40px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
         transition: all 0.2s ease;
     }
     [data-testid="stFileUploaderDropzone"]:hover {
         border-color: var(--primary);
         background-color: #f1f5f9;
     }
-    [data-testid="stFileUploaderDropzone"] div {
-        color: var(--text-muted);
-        font-size: 16px;
-    }
 
-    /* Spinner Centré et Stylisé */
-    div[data-testid="stSpinner"] {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        margin-top: 40px;
-    }
-    div[data-testid="stSpinner"] > div {
-        border-top-color: var(--primary) !important;
-    }
-    /* Ciblage spécifique du texte du spinner */
-    div[data-testid="stSpinner"] p {
-        font-size: 20px !important;
-        font-weight: 700 !important;
-        color: #0f172a !important;
-        margin-top: 16px !important;
-    }
-
-    /* Inputs */
+    /* Champs de saisie */
     .stTextInput input, .stTextArea textarea {
       background-color: #ffffff;
       border: 1px solid #cbd5e1;
       border-radius: 8px;
-      color: #334155;
-      font-size: 16px;
-      padding: 12px 14px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-      line-height: 1.5;
+      padding: 10px 14px;
     }
     .stTextInput input:focus, .stTextArea textarea:focus {
-      border-color: #0f172a;
-      box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.1);
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
       outline: none;
-    }
-    label {
-        font-weight: 700 !important;
-        font-size: 15px !important;
-        color: #475569 !important;
-        margin-bottom: 8px !important;
     }
 
     /* Boutons */
@@ -140,83 +123,79 @@ def inject_custom_css():
       width: 100%;
       border-radius: 8px;
       font-weight: 600;
-      font-size: 16px;
-      padding: 0.75rem 1rem;
       background-color: white !important;
       border: 1px solid #cbd5e1 !important;
-      color: #0f172a !important;
-      box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      color: var(--text-main) !important;
       transition: all 0.2s ease;
     }
     div.stButton > button:hover, div.stDownloadButton > button:hover {
       background-color: #f8fafc !important;
-      border-color: #94a3b8 !important;
       transform: translateY(-1px);
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
-    div.stButton > button:active {
-        background-color: #e2e8f0 !important;
-        transform: translateY(0);
-    }
 
-    /* Equal Height Columns Hack */
-    [data-testid="column"] {
-        display: flex;
-        flex-direction: column;
-        height: 100%; 
-    }
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        flex-grow: 1;
-        display: flex;
-        flex-direction: column;
-    }
+    /* Conteneurs principaux (CV et Formulaire) */
     [data-testid="stVerticalBlockBorderWrapper"] > div {
         background-color: white;
         border-radius: 12px;
         border: 1px solid var(--border-color);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02); 
-        padding: 30px;
-        height: 100%;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02); 
+        padding: 24px;
+        /* HACK : Force la hauteur minimale pour égaliser les deux colonnes sur Desktop */
+        min-height: 700px; 
         display: flex;
         flex-direction: column;
     }
 
-    /* Responsive */
-    @media (max-width: 768px) {
-      .custom-navbar { padding: 0 16px; height: 60px; }
-      [data-testid="stAppViewContainer"] > .main > .block-container { 
-          padding-top: 90px !important; 
-          padding-left: 1rem; 
-          padding-right: 1rem; 
-      }
-      [data-testid="column"] {
-          width: 100% !important;
-          margin-bottom: 24px;
-      }
-    }
-
+    /* Iframe PDF */
     iframe {
         border: none;
         display: block;
         background-color: #f1f5f9;
         border-radius: 8px;
-        flex-grow: 1;
-        min-height: 600px;
+        width: 100%;
+        height: 100%;
+        min-height: 650px; /* Prend toute la hauteur du conteneur parent */
+    }
+
+    /* --- RESPONSIVE MOBILE / TABLETTE (< 992px) --- */
+    @media (max-width: 992px) {
+      .custom-navbar { padding: 0 16px; height: 60px; }
+      
+      /* Sur mobile, on enlève la hauteur forcée pour laisser le contenu naturel */
+      [data-testid="stVerticalBlockBorderWrapper"] > div {
+          min-height: auto !important;
+          height: auto !important;
+      }
+
+      /* Le PDF prend moins de hauteur sur mobile */
+      iframe { min-height: 450px !important; } 
+      
+      /* Force les colonnes à passer l'une sous l'autre avec une marge */
+      [data-testid="column"] { 
+          width: 100% !important;
+          margin-bottom: 24px;
+          display: block;
+      }
     }
     </style>
     """, unsafe_allow_html=True)
 
+
+# COMPOSANTS UI
+
 def render_navbar():
     logo_b64 = load_image_as_base64("logo.png")
-    logo_display = (
+    
+    logo_html = (
         f'<img src="data:image/png;base64,{logo_b64}" alt="Logo" style="height:36px; border-radius:4px;">'
-        if logo_b64 else "<span style='font-weight:700; font-size:20px; color:#0f172a; letter-spacing:-0.5px;'>CBX EXTRACTOR</span>"
+        if logo_b64 else "<span style='font-weight:700; font-size:20px; color:#0f172a;'>CBX EXTRACTOR</span>"
     )
     
     st.markdown(f"""
     <div class="custom-navbar">
       <div style="display:flex;align-items:center;gap:14px;">
-        {logo_display}
+        {logo_html}
         <div style="height:24px;width:1px;background:#e2e8f0;margin:0 4px;"></div>
         <div style="display:flex;flex-direction:column;justify-content:center;">
             <span style="font-weight:700;font-size:16px;color:#0f172a;line-height:1.2;">Extraction CV</span>
@@ -229,20 +208,26 @@ def render_navbar():
     </div>
     """, unsafe_allow_html=True)
 
+
 def reset_session():
     st.session_state.cv_data = None
     st.session_state.current_file_name = None
     st.session_state.current_file_content = None
     st.rerun()
 
+
+# PAGES
+
 def show_upload_page():
-    _, col_main, _ = st.columns([1, 2, 1])
+    _, col_center, _ = st.columns([1, 2, 1])
     
-    with col_main:
+    with col_center:
         st.markdown("""
         <div style="text-align:center; margin-bottom: 40px; margin-top: 20px;">
-            <h1 style="font-size:40px; font-weight:800; color:#0f172a; margin-bottom:16px; letter-spacing:-0.5px; line-height:1.2;">Extraction de données candidats</h1>
-            <p style="font-size:18px; color:#64748b; margin:0 auto; max-width:600px; line-height:1.6;">
+            <h1 style="font-size:36px; font-weight:800; color:#0f172a; margin-bottom:16px; letter-spacing:-0.5px;">
+                Extraction de données candidats
+            </h1>
+            <p style="font-size:16px; color:#64748b; margin:0 auto; max-width:600px; line-height:1.6;">
                 Optimisez votre recrutement. Importez un CV (PDF/DOCX) pour extraire instantanément les informations clés.
             </p>
         </div>
@@ -251,11 +236,7 @@ def show_upload_page():
         uploaded_file = st.file_uploader("Zone de dépôt", type=["pdf", "docx"], label_visibility="collapsed")
 
         if not uploaded_file:
-            st.markdown("""
-            <div style="text-align:center; margin-top: 16px; color:#94a3b8; font-size:14px;">
-                Fichiers acceptés : PDF, DOCX
-            </div>
-            """, unsafe_allow_html=True)
+            st.info("Glissez votre fichier ici (PDF ou DOCX)")
 
         if uploaded_file:
             st.markdown("###")
@@ -273,53 +254,60 @@ def show_upload_page():
                         st.session_state.cv_data = resp.json()
                         st.rerun()
                     else:
-                        st.error(f"Erreur d'analyse : {resp.status_code}")
-                except Exception:
-                    st.error("Serveur indisponible. Veuillez réessayer.")
+                        st.error(f"Erreur d'analyse (Code {resp.status_code}) : {resp.text}")
+                
+                except requests.exceptions.ConnectionError:
+                    st.error("Impossible de contacter le serveur d'analyse. Vérifiez que le Backend est lancé.")
+                except Exception as e:
+                    st.error(f"Une erreur inattendue est survenue : {e}")
+
 
 def show_result_page():
     st.markdown("""
-    <div style="margin-bottom:28px; display:flex; align-items:center; gap:10px;">
-        <span style="font-weight:600; font-size:16px; color:#64748b;">Accueil</span>
-        <span style="font-size:14px; color:#cbd5e1;">/</span>
-        <span style="font-weight:700; font-size:16px; color:#0f172a;">Résultats d'extraction</span>
+    <div style="margin-bottom:20px; display:flex; align-items:center; gap:8px; font-size:14px;">
+        <span style="color:#64748b;">Accueil</span>
+        <span style="color:#cbd5e1;">/</span>
+        <span style="font-weight:600; color:#0f172a;">Résultats d'extraction</span>
     </div>
     """, unsafe_allow_html=True)
 
-    col_pdf, col_form = st.columns([1.1, 1], gap="large")
+    col_pdf, col_form = st.columns([1.2, 1], gap="large")
 
+    # APERÇU DOCUMENT INSERE
     with col_pdf:
         with st.container(border=True):
             st.markdown(f"""
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <span style="font-weight:700; font-size:18px; color:#0f172a;">Document source</span>
-                <span style="font-size:13px; color:#64748b; background:#f1f5f9; padding:6px 12px; border-radius:6px;">{st.session_state.current_file_name}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <span style="font-weight:700; font-size:16px; color:#0f172a;">Aperçu du document</span>
+                <span style="font-size:12px; color:#64748b; background:#f1f5f9; padding:4px 10px; border-radius:6px;">
+                    {st.session_state.current_file_name}
+                </span>
             </div>
             """, unsafe_allow_html=True)
             
-            if "pdf" in st.session_state.current_file_type:
-                b64 = base64.b64encode(st.session_state.current_file_content).decode("utf-8")
+            if st.session_state.current_file_type == "application/pdf":
+                b64_pdf = base64.b64encode(st.session_state.current_file_content).decode("utf-8")
+                # AJOUT : toolbar=1 pour réactiver la barre d'outils
                 st.markdown(
-                    f'<iframe src="data:application/pdf;base64,{b64}#toolbar=1&navpanes=0&view=FitH" width="100%" height="700px"></iframe>',
+                    f'<iframe src="data:application/pdf;base64,{b64_pdf}#toolbar=1&navpanes=0&view=FitH"></iframe>',
                     unsafe_allow_html=True
                 )
             else:
-                st.info("Aperçu non disponible pour ce format.")
-                st.markdown('<div style="height:700px; background:#f8fafc; display:flex; align-items:center; justify-content:center; color:#cbd5e1; font-size:16px;">Visualisation impossible</div>', unsafe_allow_html=True)
+                st.warning("L'aperçu n'est disponible que pour les fichiers PDF.")
+                st.markdown('<div style="height:400px; background:#f8fafc; display:flex; align-items:center; justify-content:center; color:#cbd5e1;">Aperçu non disponible</div>', unsafe_allow_html=True)
 
+    # FORMULAIRE D'EXTRACTION
     with col_form:
         cv = st.session_state.cv_data
         
         with st.container(border=True):
             st.markdown("""
-            <div style="margin-bottom:24px;">
-                <span style="font-weight:700; font-size:20px; color:#0f172a;">Données extraites</span>
-                <p style="font-size:14px; color:#64748b; margin-top:6px; line-height:1.5;">Vérifiez les informations détectées par l'IA avant l'exportation.</p>
+            <div style="margin-bottom:20px;">
+                <span style="font-weight:700; font-size:18px; color:#0f172a;">Informations détectées</span>
+                <p style="font-size:13px; color:#64748b; margin-top:4px;">Vous pouvez modifier les champs avant l'export.</p>
             </div>
             """, unsafe_allow_html=True)
             
-            st.markdown("---")
-
             c1, c2 = st.columns(2)
             fn = c1.text_input("Prénom", cv.get("first_name", ""))
             ln = c2.text_input("Nom", cv.get("last_name", ""))
@@ -327,12 +315,11 @@ def show_result_page():
             email = st.text_input("Email", cv.get("email", ""))
             phone = st.text_input("Téléphone", cv.get("phone", ""))
             
-            degree = st.text_area("Diplôme / Formation", cv.get("degree", ""), height=150)
+            degree = st.text_area("Diplôme / Formation", cv.get("degree", ""), height=120)
 
-            st.markdown("<div style='flex-grow:1;'></div>", unsafe_allow_html=True)
-            st.markdown("###") 
+            st.markdown("<div style='flex-grow:1; min-height: 20px;'></div>", unsafe_allow_html=True)
             
-            b1, b2 = st.columns(2)
+            col_action_1, col_action_2 = st.columns(2)
             
             final_json = {
                 "first_name": fn, "last_name": ln,
@@ -340,7 +327,7 @@ def show_result_page():
                 "degree": degree
             }
             
-            with b1:
+            with col_action_1:
                 st.download_button(
                     label="Télécharger JSON",
                     data=json.dumps(final_json, ensure_ascii=False, indent=4),
@@ -349,9 +336,12 @@ def show_result_page():
                     use_container_width=True
                 )
             
-            with b2:
+            with col_action_2:
                 if st.button("Analyser un autre CV", use_container_width=True):
                     reset_session()
+
+
+# POINT D'ENTRÉE
 
 def main():
     if "cv_data" not in st.session_state:

@@ -1,9 +1,14 @@
 import re
 import unicodedata
+import logging
 from typing import Tuple, List, Set
+
+# --- CONFIGURATION LOGGING ---
+logger = logging.getLogger(__name__)
 
 # --- CONSTANTES DE CONFIGURATION ---
 
+# Mots à ignorer lors de l'analyse (dates, structure, soft skills...)
 SKIP_KEYWORDS: Set[str] = {
     # Temporel
     "janvier", "février", "mars", "avril", "mai", "juin",
@@ -56,7 +61,7 @@ SKIP_KEYWORDS: Set[str] = {
     "région", "region", "province", "state", "district",
     "linkedin", "github", "gitlab", "bitbucket", "site", "web", "website", "url",
 
-    # Grammaire
+    # Grammaire & Mots courants
     "le", "la", "l", "les", "un", "une", "des", "du", "de", "d",
     "mon", "ma", "mes", "ton", "ta", "tes", "son", "sa", "ses", "notre", "votre", "leur",
     "je", "tu", "il", "elle", "nous", "vous", "ils", "elles", "moi", "toi",
@@ -81,7 +86,7 @@ SKIP_KEYWORDS: Set[str] = {
     "mention", "spécialité", "option", "niveau", "level", "grade",
     "admis", "admitted", "obtenu", "obtained", "validé", "validated",
 
-    # Qualités / Soft Skills
+    # Soft Skills
     "dynamique", "dynamic", "motivé", "motivated", "sérieux", "serious",
     "curieux", "curious", "autonome", "autonomous", "rigueur", "rigorous",
     "équipe", "team", "teamwork", "relationnel", "relational",
@@ -89,6 +94,7 @@ SKIP_KEYWORDS: Set[str] = {
     "ponctuel", "punctual", "sociable", "leadership", "management"
 }
 
+# Liste des diplômes connus
 RAW_DEGREES: List[str] = [
     "doctorat", "phd", "ph.d", "docteur",
     "diplôme d'ingénieur", "ingénierie", "ingénieur",
@@ -104,22 +110,20 @@ RAW_DEGREES: List[str] = [
     "baccalauréat", "bac"
 ]
 
+# Mots d'arrêt pour la détection de la spécialité du diplôme
 DEGREE_STOP_WORDS: Set[str] = {
-    # Articles & Prépositions en Français et Anglais
+    # Articles & Prépositions
     "le", "la", "l", "les", "un", "une", "des", "du", "de", "d",
     "en", "au", "aux", "à", "a", "dans", "par", "pour", "sur", "avec", 
     "et", "ou", "ni", "car", "sans", "sous", "vers", "chez",
-
-    "the", "a", "an",
-    "of", "in", "to", "for", "with", "and", "&", "or",
+    "the", "a", "an", "of", "in", "to", "for", "with", "and", "&", "or",
     "at", "from", "on", "by", "about",
 
-    # Vocabulaire Académique / Structure en Francais et Anglais
+    # Vocabulaire Académique / Structure
     "mention", "spécialité", "spécialisation", "option", "filière", "parcours",
     "cursus", "orientation", "branche", "domaine", "intitulé",
     "niveau", "grade", "titre", "diplôme", "certificat",
     "majeure", "mineure", "module", "uv",
-
     "major", "minor", "specialization", "speciality", "focus", "track",
     "emphasis", "stream", "field", "branch", "concentration",
     "degree", "diploma", "honours", "hons", "award",
@@ -132,100 +136,140 @@ DEGREE_STOP_WORDS: Set[str] = {
 }
 
 
-# FONCTIONS UTILITAIRES 
+# --- FONCTIONS UTILITAIRES ---
 
 def clean_text(text: str) -> str:
     """
     Normalise le texte : mise en minuscules, suppression des espaces multiples
-    et suppression des accents
+    et suppression des accents.
     """
-
     if not text:
         return ""
 
-    text = text.lower()
+    try:
+        text = text.lower()
+        
+        replacements = {
+            'œ': 'oe', 'æ': 'ae', '€': ' euro ',
+            '’': "'", '‘': "'", '–': "-"
+        }
+        for char, repl in replacements.items():
+            text = text.replace(char, repl)
+
+        text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8')
+        return re.sub(r'\s+', ' ', text).strip()
     
-    replacements = {
-        'œ': 'oe', 'æ': 'ae', '€': ' euro ',
-        '’': "'", '‘': "'", '–': "-"
-    }
-    for char, replacement in replacements.items():
-        text = text.replace(char, replacement)
-
-    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8')
-
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text
+    except Exception as e:
+        logger.warning(f"Echec du nettoyage de texte : {e}")
+        return text
 
 
-# FONCTIONS D'EXTRACTION 
+# --- FONCTIONS D'EXTRACTION ---
 
 def extract_email(text: str) -> str:
-    """Extrait le premier email trouvé. Retourne 'Non trouvé' si echec."""
-    if not text:
+    """Extrait le premier email trouvé."""
+    if not text: 
         return "Non trouvé"
 
-    match = re.search(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', text)
-    return match.group(0) if match else "Non trouvé"
+    try:
+        match = re.search(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', text)
+        return match.group(0) if match else "Non trouvé"
+    except Exception as e:
+        logger.error(f"Erreur regex email : {e}")
+        return "Non trouvé"
 
 
 def extract_phone(text: str) -> str:
-    """Extrait le téléphone. Filtre les années (ex: 2025-2028)."""
-    if not text:
+    """Extrait le téléphone en filtrant les années (ex: 2025-2028)."""
+    if not text: 
         return "Non trouvé"
 
     pattern = r'(\+?\d{1,3}[\s.-]?)?((?:\d[\s.-]?){7,14}\d)'
 
-    for match in re.finditer(pattern, text):
-        phone = match.group(0).strip()
-        if re.match(r'^\d{4}(-\d{2,4})?$', phone):
-            continue
-        return phone
+    try:
+        for match in re.finditer(pattern, text):
+            phone = match.group(0).strip()
+            # Protection contre les années
+            if re.match(r'^\d{4}(-\d{2,4})?$', phone):
+                continue
+            return phone
+    except Exception as e:
+        logger.error(f"Erreur regex téléphone : {e}")
 
     return "Non trouvé"
 
 
 def extract_name(text: str) -> Tuple[str, str]:
     """
-    Extrait le prénom et le nom depuis les 5 premières lignes.
-    Protection : Si text est None, retourne ('Non trouvé', 'Non trouvé').
+    Extrait le prénom et le nom.
+    Priorité : En-tête du CV sinon Deviné via l'email.
     """
-    if not text:
+    if not text: 
         return "Non trouvé", "Non trouvé"
 
-    lines = text.splitlines()[:5]
+    try:
+        # Recherche dans les 5 premières lignes
+        lines = text.splitlines()[:5]
 
-    for line in lines:
-        candidates = re.findall(r'\b[A-Za-zÀ-ÿ]{3,}\b', line)
-        valid_words = [w for w in candidates if w.lower() not in SKIP_KEYWORDS]
-        
-        if len(valid_words) >= 2:
-            return valid_words[0].capitalize(), valid_words[1].capitalize()
+        for line in lines:
+            candidates = re.findall(r'\b[A-Za-zÀ-ÿ]{3,}\b', line)
+            valid_words = [w for w in candidates if w.lower() not in SKIP_KEYWORDS]
+            
+            if len(valid_words) >= 2:
+                return valid_words[0].capitalize(), valid_words[1].capitalize()
+
+        # Si échec, tentative via l'email
+        email = extract_email(text)
+        if email and email != "Non trouvé":
+            # Nettoyage de la partie locale (avant @) pour retirer les chiffres
+            local_part = re.sub(r'\d+', '', email.split("@")[0])
+            parts = re.split(r'[._-]', local_part)
+            
+            valid_parts = [p for p in parts if len(p) >= 2]
+            
+            if len(valid_parts) >= 2:
+                return valid_parts[0].capitalize(), valid_parts[1].capitalize()
+    
+    except Exception as e:
+        logger.error(f"Erreur extraction nom : {e}")
 
     return "Non trouvé", "Non trouvé"
 
 
 def extract_degree(text: str) -> str:
-    """Identifie le diplôme principal et sa spécialité."""
+    """
+    Recherche un diplôme connu et tente d'extraire la spécialité associée.
+    Ex: 'BUT Informatique de Gestion' -> 'But Informatique Gestion'
+    """
     if not text:
         return "Non trouvé"
 
-    words = re.findall(r"[^\s]+", text.lower())
+    try:
+        words = re.findall(r"[^\s]+", text.lower())
 
-    for i, word in enumerate(words):
-        for deg in RAW_DEGREES:
-            if deg.lower() == word:
-                degree = deg.capitalize() if len(deg) > 3 else deg.upper()
-                specialty_words = []
-                j = i + 1
-                while j < len(words) and len(specialty_words) < 2:
-                    w = words[j].replace(".", "").replace(",", "").replace("'", "")
-                    if w not in DEGREE_STOP_WORDS and not w.isdigit():
-                        specialty_words.append(w.capitalize())
-                    j += 1
+        for i, word in enumerate(words):
+            if word in RAW_DEGREES:
+                #extraction diplome
+                degree = word.capitalize()
                 
-                specialty = " ".join(specialty_words)
-                return f"{degree} {specialty}".strip() if specialty else degree
+                # Recherche de la spécialité dans les mots suivants
+                specialty_parts = []
+                
+                for next_word in words[i + 1 : i + 10]:
+                    clean_word = next_word.replace(".", "").replace(",", "").replace("'", "")
+                    
+                    if clean_word in DEGREE_STOP_WORDS or clean_word.isdigit():
+                        continue
+                    
+                    #rendre la spécialité de 2 mots uniquement
+                    specialty_parts.append(clean_word.capitalize())
+                    if len(specialty_parts) >= 2:
+                        break
+                
+                full_title = f"{degree} {' '.join(specialty_parts)}".strip()
+                return full_title
+
+    except Exception as e:
+        logger.error(f"Erreur inattendue lors de l'extraction du diplôme : {e}")
 
     return "Non trouvé"
